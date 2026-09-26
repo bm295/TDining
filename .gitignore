@@ -2,6 +2,9 @@
 bin/
 obj/
 out/
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
 
 # User-specific files
 *.user

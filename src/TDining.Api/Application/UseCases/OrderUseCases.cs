@@ -61,6 +61,14 @@ public sealed class OrderUseCases(
         return ToDto(order);
     }
 
+    public async Task<OrderDto> MarkServedAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        var order = await orderRepository.GetByIdAsync(orderId, cancellationToken) ?? throw new InvalidOperationException("Order not found.");
+        order.MarkServed();
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return ToDto(order);
+    }
+
     public async Task<PaymentResultDto> ProcessPaymentAsync(Guid orderId, ProcessPaymentCommand command, CancellationToken cancellationToken)
     {
         var order = await orderRepository.GetByIdAsync(orderId, cancellationToken) ?? throw new InvalidOperationException("Order not found.");

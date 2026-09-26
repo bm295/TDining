@@ -10,7 +10,7 @@ public sealed class ReportingUseCases(IOrderRepository orderRepository) : IRepor
     public async Task<DailyReportDto> GetDailyReportAsync(DateOnly date, CancellationToken cancellationToken)
     {
         var orders = await orderRepository.ListAsync(cancellationToken);
-        var selected = orders.Where(o => DateOnly.FromDateTime(o.CreatedAtUtc) == date).ToList();
+        var selected = orders.Where(o => DateOnly.FromDateTime(o.CreatedAtUtc.ToLocalTime()) == date).ToList();
 
         return new DailyReportDto(
             date,

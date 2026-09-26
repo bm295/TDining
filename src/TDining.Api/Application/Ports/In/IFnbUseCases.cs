@@ -8,6 +8,7 @@ public interface IOrderUseCases
     Task<OrderDto> AddItemAsync(Guid orderId, UpdateOrderItemCommand command, CancellationToken cancellationToken);
     Task<OrderDto> RemoveItemAsync(Guid orderId, UpdateOrderItemCommand command, CancellationToken cancellationToken);
     Task<OrderDto> SendToKitchenAsync(Guid orderId, CancellationToken cancellationToken);
+    Task<OrderDto> MarkServedAsync(Guid orderId, CancellationToken cancellationToken);
     Task<PaymentResultDto> ProcessPaymentAsync(Guid orderId, ProcessPaymentCommand command, CancellationToken cancellationToken);
     Task<OrderDto> CloseOrderAsync(Guid orderId, CancellationToken cancellationToken);
     Task<IReadOnlyCollection<OrderDto>> ListOrdersAsync(CancellationToken cancellationToken);

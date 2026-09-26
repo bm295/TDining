@@ -7,12 +7,16 @@ using TDining.Api.Domain.Services;
 using TDining.Api.Infrastructure.Outbox;
 using TDining.Api.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http.Json;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 var databasePath = Path.Combine(builder.Environment.ContentRootPath, "tdining.db");
 var connectionString = builder.Configuration.GetConnectionString("Default") ?? $"Data Source={databasePath}";
 
 builder.Services.AddProblemDetails();
+builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins("http://localhost:4200", "http://127.0.0.1:4200").AllowAnyHeader().AllowAnyMethod()));
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
 builder.Services.AddDbContext<TDiningDbContext>(options => options.UseSqlite(connectionString));
@@ -33,6 +37,7 @@ builder.Services.AddHostedService<OutboxProcessor>();
 
 var app = builder.Build();
 app.UseExceptionHandler();
+app.UseCors();
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -40,13 +45,15 @@ await using (var scope = app.Services.CreateAsyncScope())
     await TDiningDbSeeder.InitializeAsync(dbContext);
 }
 
-app.MapGet("/", () => Results.Ok(new
+app.MapGet("/api", () => Results.Ok(new
 {
     service = "T Dining API",
     architecture = "Hexagonal (Ports & Adapters)",
     seatingCapacity = "60-70 seats",
     persistence = "SQLite with transactional outbox"
 }));
+
+app.MapGet("/", () => Results.Ok(new { service = "T Dining API", frontend = "Run the Angular app from frontend/" }));
 
 app.MapGet("/tables", async (ITableRepository tableRepository, CancellationToken ct) =>
 {
@@ -90,6 +97,9 @@ app.MapPost("/orders/{orderId:guid}/items/remove", async (Guid orderId, UpdateOr
 
 app.MapPost("/orders/{orderId:guid}/send-to-kitchen", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.SendToKitchenAsync(orderId, ct))));
+
+app.MapPost("/orders/{orderId:guid}/mark-served", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
+    await Execute(async () => Results.Ok(await useCases.MarkServedAsync(orderId, ct))));
 
 app.MapPost("/orders/{orderId:guid}/payments", async (Guid orderId, ProcessPaymentCommand command, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.ProcessPaymentAsync(orderId, command, ct))));
