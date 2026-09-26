@@ -1,4 +1,5 @@
 using TDining.Api.Application.DTOs;
+using TDining.Api.Domain.Entities;
 
 namespace TDining.Api.Application.Ports.In;
 
@@ -23,4 +24,12 @@ public interface IReservationUseCases
 public interface IReportingUseCases
 {
     Task<DailyReportDto> GetDailyReportAsync(DateOnly date, CancellationToken cancellationToken);
+}
+
+public interface IRestaurantOperationsUseCases
+{
+    Task<IReadOnlyCollection<DiningTableDto>> ListTablesAsync(CancellationToken cancellationToken);
+    Task<DiningTableDto?> UpdateTableStatusAsync(string tableCode, TableStatus status, CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<MenuItemDto>> ListMenuAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyCollection<InventoryItemDto>> ListInventoryAsync(CancellationToken cancellationToken);
 }

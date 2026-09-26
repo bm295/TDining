@@ -13,3 +13,6 @@ public sealed record OrderDto(Guid Id, string TableCode, string CustomerName, st
 public sealed record PaymentResultDto(Guid PaymentId, Guid OrderId, decimal AmountVnd, PaymentMethod Method, DateTime PaidAtUtc, decimal RemainingBalanceVnd);
 public sealed record ReservationDto(Guid Id, string CustomerName, string PhoneNumber, int GuestCount, DateTime BookingTimeUtc, string Status, string? Note);
 public sealed record DailyReportDto(DateOnly Date, int TotalOrders, decimal GrossSalesVnd, int ClosedOrders, int ActiveOrders);
+public sealed record DiningTableDto(string Code, int Seats, string Status);
+public sealed record MenuItemDto(Guid Id, string Name, string Category, decimal PriceVnd, bool IsAvailable);
+public sealed record InventoryItemDto(Guid Id, string Name, string Unit, decimal Quantity);

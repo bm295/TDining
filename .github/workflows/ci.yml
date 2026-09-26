@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - work
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore tests/TDining.Api.Tests/TDining.Api.Tests.csproj
+
+      - name: Build
+        run: dotnet build tests/TDining.Api.Tests/TDining.Api.Tests.csproj --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test tests/TDining.Api.Tests/TDining.Api.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Format check
+        run: dotnet format tests/TDining.Api.Tests/TDining.Api.Tests.csproj --verify-no-changes --no-restore --verbosity diagnostic
