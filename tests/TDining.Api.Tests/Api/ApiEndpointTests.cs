@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +12,36 @@ namespace TDining.Api.Tests.Api;
 
 public sealed class ApiEndpointTests
 {
+    [Fact]
+    public async Task SuccessfulMutation_NotifiesBothConnectedClients_AfterPersistence()
+    {
+        await using var factory = new TDiningApiFactory();
+        using var client = factory.CreateClient();
+        HubConnection Connect() => new HubConnectionBuilder()
+            .WithUrl(new Uri(client.BaseAddress!, "/hubs/restaurant"), options =>
+            {
+                options.Transports = HttpTransportType.LongPolling;
+                options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+            }).Build();
+        await using var first = Connect();
+        await using var second = Connect();
+        var firstChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        first.On("WorkspaceChanged", () => firstChanged.TrySetResult());
+        second.On("WorkspaceChanged", () => secondChanged.TrySetResult());
+        await first.StartAsync();
+        await second.StartAsync();
+
+        var invalid = await client.PatchAsJsonAsync("/tables/missing/status", new UpdateTableStatusRequest(TableStatus.Cleaning));
+        Assert.Equal(HttpStatusCode.NotFound, invalid.StatusCode);
+        Assert.False(firstChanged.Task.IsCompleted);
+        var response = await client.PatchAsJsonAsync("/tables/T1/status", new UpdateTableStatusRequest(TableStatus.Cleaning));
+        response.EnsureSuccessStatusCode();
+        await Task.WhenAll(firstChanged.Task, secondChanged.Task).WaitAsync(TimeSpan.FromSeconds(10));
+        var tables = await client.GetFromJsonAsync<List<DiningTableResponse>>("/tables");
+        Assert.Contains(tables!, table => table.Code == "T1" && table.Status == "Cleaning");
+    }
+
     [Fact]
     public async Task GetMenu_ReturnsSeededMenu()
     {

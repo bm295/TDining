@@ -1,4 +1,7 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subject, catchError, debounceTime, of, startWith, switchMap } from 'rxjs';
+import { RealtimeService } from './realtime.service';
+import { Component, DestroyRef, OnInit, inject } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { FormArray, FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive } from '@angular/router';
@@ -8,8 +11,12 @@ import { DailyReport, InventoryItem, MenuItem, Order, Reservation, Table } from 
 @Component({ selector: 'td-workspace', standalone: true, imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterLink, RouterLinkActive, CurrencyPipe, DatePipe, DecimalPipe], templateUrl: './workspace.component.html' })
 export class WorkspaceComponent implements OnInit {
   private readonly api = inject(ApiService); private readonly fb = inject(FormBuilder); private readonly route = inject(ActivatedRoute); private readonly router = inject(Router);
+  private readonly realtime = inject(RealtimeService);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly refresh = new Subject<void>();
   readonly nav = [{id:'dashboard',label:'Overview',icon:'▦'},{id:'orders',label:'Orders',icon:'▤'},{id:'tables',label:'Floor & tables',icon:'▦'},{id:'menu',label:'Menu',icon:'◉'},{id:'reservations',label:'Reservations',icon:'▣'},{id:'inventory',label:'Inventory',icon:'▧'},{id:'reports',label:'Reports',icon:'⌁'}];
   view = 'dashboard'; tables: Table[]=[]; menu: MenuItem[]=[]; inventory: InventoryItem[]=[]; orders: Order[]=[]; reservations: Reservation[]=[]; report?: DailyReport;
+  private reportDate = this.api.today();
   loading=true; error=''; toastMessage=''; search=''; category='All items'; selectedOrder?: Order; modal: 'order'|'reservation'|'payment'|null=null; mobileNav=false;
   readonly orderForm = this.fb.group({ customerName:['',Validators.required], tableCode:['',Validators.required], items:this.fb.array<FormGroup>([]) });
   readonly reservationForm = this.fb.group({ customerName:['',Validators.required], phoneNumber:['',Validators.required], guestCount:[2,[Validators.required,Validators.min(1),Validators.max(70)]], bookingTime:[this.localDateTime(),Validators.required], note:[''] });
@@ -25,8 +32,29 @@ export class WorkspaceComponent implements OnInit {
   get pageTitle(): string { return ({dashboard:'Good morning, Minh',orders:'Orders',tables:'Floor & tables',menu:'The menu',reservations:'Reservations',inventory:'Inventory',reports:'Daily report'} as Record<string,string>)[this.view]||'Overview'; }
   get currentNavLabel(): string { return this.nav.find(item=>item.id===this.view)?.label||'Overview'; }
   get pageSubtitle(): string { return ({dashboard:`Here's what's happening at your restaurant today, ${new Intl.DateTimeFormat('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}).format(new Date())}.`,orders:'Create, track, and close guest orders.',tables:'A clear view of every seat in your dining room.',menu:'Your dishes and drinks, all in one place.',reservations:'A warm welcome starts before guests arrive.',inventory:'Keep an eye on the ingredients that keep service moving.',reports:'A snapshot of your restaurant’s performance.'} as Record<string,string>)[this.view]||''; }
-  ngOnInit(): void { this.route.paramMap.subscribe(params=>{const next=params.get('view')||'dashboard';this.view=this.nav.some(n=>n.id===next)?next:'dashboard';}); this.reload(); }
-  reload(): void { this.loading=true;this.error='';this.api.loadWorkspace().subscribe({next:data=>{this.tables=data.tables;this.menu=data.menu;this.inventory=data.inventory;this.orders=data.orders;this.reservations=data.reservations;this.report=data.report;this.loading=false;},error:err=>{this.error=err.error?.error||'Could not connect to the T Dining API. Start the API at http://localhost:5000 and try again.';this.loading=false;}}); }
+  ngOnInit(): void {
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
+      const next = params.get('view') || 'dashboard';
+      this.view = this.nav.some(n => n.id === next) ? next : 'dashboard';
+    });
+    this.realtime.changes$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refresh.next());
+    this.refresh.pipe(
+      startWith(undefined), debounceTime(100),
+      switchMap(() => this.api.loadWorkspace(this.reportDate).pipe(catchError(() => {
+        this.error = 'Could not load workspace data. Please try again.';
+        this.loading = false;
+        return of(null);
+      }))),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(data => {
+      if (!data) return;
+      this.tables=data.tables; this.menu=data.menu; this.inventory=data.inventory;
+      this.orders=data.orders; this.reservations=data.reservations; this.report=data.report;
+      if (this.selectedOrder) this.selectedOrder=this.orders.find(o=>o.id===this.selectedOrder!.id);
+      this.error=''; this.loading=false;
+    });
+  }
+  reload(): void { this.loading=true; this.refresh.next(); }
   notify(message:string):void{this.toastMessage=message;setTimeout(()=>this.toastMessage='',2800);}
   showError(err:any):void{this.notify(err.error?.error||'Something went wrong. Please try again.');}
   openOrder(tableCode='',menuItemId=''):void{this.orderForm.reset({customerName:'',tableCode,items:[]});this.orderItems.clear();this.addOrderLine(menuItemId);this.modal='order';}
@@ -43,7 +71,7 @@ export class WorkspaceComponent implements OnInit {
   closeOrder(order:Order):void{this.api.closeOrder(order.id).subscribe({next:()=>{this.selectedOrder=undefined;this.notify('Order closed. Table moved to cleaning.');this.reload();},error:err=>this.showError(err)});}
   submitReservation():void{if(this.reservationForm.invalid){this.reservationForm.markAllAsTouched();return;}const v=this.reservationForm.getRawValue();this.api.createReservation({customerName:v.customerName,phoneNumber:v.phoneNumber,guestCount:Number(v.guestCount),bookingTimeUtc:new Date(v.bookingTime!).toISOString(),note:v.note||null}).subscribe({next:()=>{this.modal=null;this.notify('Reservation saved.');this.reload();},error:err=>this.showError(err)});}
   openReservation():void{this.reservationForm.reset({customerName:'',phoneNumber:'',guestCount:2,bookingTime:this.localDateTime(),note:''});this.modal='reservation';}
-  loadReport(date:string):void{this.api.dailyReport(date).subscribe({next:r=>this.report=r,error:e=>this.showError(e)});}
+  loadReport(date:string):void{this.reportDate=date;this.api.dailyReport(date).subscribe({next:r=>this.report=r,error:e=>this.showError(e)});}
   orderCount(order:Order):number{return order.lines.reduce((sum,line)=>sum+line.quantity,0);}
   remaining(order:Order):number{return Math.max(0,order.totalAmountVnd-order.paidAmountVnd);}
   recentOrders():Order[]{return [...this.orders].sort((a,b)=>b.createdAtUtc.localeCompare(a.createdAtUtc)).slice(0,5);}

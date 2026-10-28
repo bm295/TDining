@@ -1,3 +1,4 @@
+using TDining.Api.Infrastructure.Realtime;
 using TDining.Api.Application.DTOs;
 using TDining.Api.Application.Ports.In;
 using TDining.Api.Composition;
@@ -11,8 +12,9 @@ var databasePath = Path.Combine(builder.Environment.ContentRootPath, "tdining.db
 var connectionString = builder.Configuration.GetConnectionString("Default") ?? $"Data Source={databasePath}";
 
 builder.Services.AddProblemDetails();
+builder.Services.AddSignalR();
 builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins("http://localhost:4200", "http://127.0.0.1:4200").AllowAnyHeader().AllowAnyMethod()));
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins("http://localhost:4200", "http://127.0.0.1:4200").AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
 builder.Services
@@ -29,6 +31,9 @@ await using (var scope = app.Services.CreateAsyncScope())
     await TDiningDbSeeder.InitializeAsync(dbContext);
 }
 
+app.MapHub<RestaurantHub>("/hubs/restaurant");
+var mutations = app.MapGroup("").AddEndpointFilter<WorkspaceChangedFilter>();
+
 app.MapGet("/api", () => Results.Ok(new
 {
     service = "T Dining API",
@@ -41,7 +46,7 @@ app.MapGet("/", () => Results.Ok(new { service = "T Dining API", frontend = "Run
 app.MapGet("/tables", async (IRestaurantOperationsUseCases useCases, CancellationToken ct) =>
     Results.Ok(await useCases.ListTablesAsync(ct)));
 
-app.MapPatch("/tables/{tableCode}/status", async (string tableCode, UpdateTableStatusRequest request, IRestaurantOperationsUseCases useCases, CancellationToken ct) =>
+mutations.MapPatch("/tables/{tableCode}/status", async (string tableCode, UpdateTableStatusRequest request, IRestaurantOperationsUseCases useCases, CancellationToken ct) =>
 {
     var table = await useCases.UpdateTableStatusAsync(tableCode, request.Status, ct);
     if (table is null) return Results.NotFound(new { error = "Table not found." });
@@ -57,31 +62,31 @@ app.MapGet("/inventory", async (IRestaurantOperationsUseCases useCases, Cancella
 
 app.MapGet("/orders", async (IOrderUseCases useCases, CancellationToken ct) => Results.Ok(await useCases.ListOrdersAsync(ct)));
 
-app.MapPost("/orders", async (CreateOrderCommand command, IOrderUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/orders", async (CreateOrderCommand command, IOrderUseCases useCases, CancellationToken ct) =>
 {
     return await Execute(async () => Results.Created("/orders", await useCases.CreateOrderAsync(command, ct)));
 });
 
-app.MapPost("/orders/{orderId:guid}/items/add", async (Guid orderId, UpdateOrderItemCommand command, IOrderUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/orders/{orderId:guid}/items/add", async (Guid orderId, UpdateOrderItemCommand command, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.AddItemAsync(orderId, command, ct))));
 
-app.MapPost("/orders/{orderId:guid}/items/remove", async (Guid orderId, UpdateOrderItemCommand command, IOrderUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/orders/{orderId:guid}/items/remove", async (Guid orderId, UpdateOrderItemCommand command, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.RemoveItemAsync(orderId, command, ct))));
 
-app.MapPost("/orders/{orderId:guid}/send-to-kitchen", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/orders/{orderId:guid}/send-to-kitchen", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.SendToKitchenAsync(orderId, ct))));
 
-app.MapPost("/orders/{orderId:guid}/mark-served", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/orders/{orderId:guid}/mark-served", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.MarkServedAsync(orderId, ct))));
 
-app.MapPost("/orders/{orderId:guid}/payments", async (Guid orderId, ProcessPaymentCommand command, IOrderUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/orders/{orderId:guid}/payments", async (Guid orderId, ProcessPaymentCommand command, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.ProcessPaymentAsync(orderId, command, ct))));
 
-app.MapPost("/orders/{orderId:guid}/close", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/orders/{orderId:guid}/close", async (Guid orderId, IOrderUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Ok(await useCases.CloseOrderAsync(orderId, ct))));
 
 app.MapGet("/reservations", async (IReservationUseCases useCases, CancellationToken ct) => Results.Ok(await useCases.ListReservationsAsync(ct)));
-app.MapPost("/reservations", async (CreateReservationCommand command, IReservationUseCases useCases, CancellationToken ct) =>
+mutations.MapPost("/reservations", async (CreateReservationCommand command, IReservationUseCases useCases, CancellationToken ct) =>
     await Execute(async () => Results.Created("/reservations", await useCases.CreateReservationAsync(command, ct))));
 
 app.MapGet("/reports/daily/{date}", async (string date, IReportingUseCases useCases, CancellationToken ct) =>

@@ -7,8 +7,8 @@ import { DailyReport, InventoryItem, MenuItem, Order, Reservation, Table } from 
 export class ApiService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = '/api';
-  loadWorkspace(): Observable<{ tables: Table[]; menu: MenuItem[]; inventory: InventoryItem[]; orders: Order[]; reservations: Reservation[]; report: DailyReport }> {
-    return forkJoin({ tables: this.http.get<Table[]>(`${this.baseUrl}/tables`), menu: this.http.get<MenuItem[]>(`${this.baseUrl}/menu`), inventory: this.http.get<InventoryItem[]>(`${this.baseUrl}/inventory`), orders: this.http.get<Order[]>(`${this.baseUrl}/orders`), reservations: this.http.get<Reservation[]>(`${this.baseUrl}/reservations`), report: this.http.get<DailyReport>(`${this.baseUrl}/reports/daily/${this.today()}`) });
+  loadWorkspace(reportDate = this.today()): Observable<{ tables: Table[]; menu: MenuItem[]; inventory: InventoryItem[]; orders: Order[]; reservations: Reservation[]; report: DailyReport }> {
+    return forkJoin({ tables: this.http.get<Table[]>(`${this.baseUrl}/tables`), menu: this.http.get<MenuItem[]>(`${this.baseUrl}/menu`), inventory: this.http.get<InventoryItem[]>(`${this.baseUrl}/inventory`), orders: this.http.get<Order[]>(`${this.baseUrl}/orders`), reservations: this.http.get<Reservation[]>(`${this.baseUrl}/reservations`), report: this.http.get<DailyReport>(`${this.baseUrl}/reports/daily/${reportDate}`) });
   }
   today(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   dailyReport(date: string): Observable<DailyReport> { return this.http.get<DailyReport>(`${this.baseUrl}/reports/daily/${date}`); }

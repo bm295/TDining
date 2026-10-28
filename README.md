@@ -54,3 +54,11 @@ The database is created at `src/TDining.Api/tdining.db` the first time the API s
 - `GET /reservations`
 - `POST /reservations`
 - `GET /reports/daily/{date}`
+
+## Realtime updates (SignalR)
+
+The API exposes `/hubs/restaurant`. Successful order, payment, table status, and reservation mutations broadcast `WorkspaceChanged` after persistence. Failed requests do not broadcast. Angular refreshes workspace data across open clients, coalesces events, and retries connections every five seconds, including initial connection failures. A successful connection/reconnection refreshes data to recover missed changes. Notifications are transient; they are not a durable event stream or part of the transactional outbox.
+
+The development proxy forwards `/hubs/**` with WebSocket support. In production, route `/hubs/**` to the API without rewriting it and enable WebSocket upgrades (alongside the existing `/api` rewrite). The current app has no authentication; all connected clients receive workspace invalidations.
+
+To verify manually, open two tabs at `http://localhost:4200`, change a table status or create an order in one tab, and confirm the other updates automatically. Restart the API and confirm the clients reconnect and refresh.
